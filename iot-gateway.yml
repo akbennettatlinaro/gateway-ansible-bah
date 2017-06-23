@@ -8,19 +8,20 @@
 #  - create and copy ssh key
 #  - run playbook with appropriate parameters
 #  ansible-playbook -e "mqttuser= mqttpass= mqtthost= mqttport= gitci= tag=" -i targethost, iot-gateway.yml
-#    where tag is the default docker tag (e.g. latest-arm64, latest-armhf or "" for latest)
+#    where tag is the default docker tag (e.g. latest-arm64, latest-armhf or "" for x86-64)
 
 # Cleanup running containers when doing a group rollout
 - hosts: all
   tasks:
   - name: Cleanup for containers for group roll-out
-    command: sh -c "docker stop $(docker ps -aq); "\
-                   "docker rm $(docker ps -aq)"
+    command: sh -c "docker stop $(docker ps -aq) ;"\
+                   "docker rm $(docker ps -aq); echo "PASS"
   tags:
     - gateway
-    - demo
+    - cloud
+    - local
 
-# Mosquitto broker
+# Mosquitto broker, cloudmqtt or IBM bluemix
 - hosts: all
   tasks:
   - name: Copy mosquitto config file
@@ -54,9 +55,26 @@
                            "-v /home/linaro/mosquitto.conf:/etc/mosquitto/conf.d/mosquitto.conf "\
                            "--name mosquitto {{ hub|default('linarotechnologies') }}/mosquitto:{{ tag|default('latest') }}"
   tags:
+    - cloud
+
+# Mosquitto 'minimal' broker
+- hosts: all
+  tasks:
+  - name: Copy mosquitto config file
+    copy:
+      src: mosquitto-minimal.conf
+      dest: /home/linaro/mosquitto.conf
+  - name: Start mosquitto container
+    command: sh -c "docker stop mosquitto; docker rm mosquitto; "\
+                   "docker pull {{ hub|default('linarotechnologies') }}/mosquitto:{{ tag|default('latest') }}; "\
+                   "docker run --restart=always -d -t --net=host --read-only "\
+                           "-v /home/linaro/mosquitto.conf:/etc/mosquitto/conf.d/mosquitto.conf "\
+                           "--name mosquitto {{ hub|default('linarotechnologies') }}/mosquitto:{{ tag|default('latest') }}"
+  tags:
     - mosquitto
     - gateway
-    - demo
+    - local
+
 
 # Tinyproxy
 - hosts: all
@@ -71,6 +89,8 @@
   tags:
     - tinyproxy
     - gateway
+    - local
+    - cloud
 
 # Bt-Joiner
 - hosts: all
@@ -90,6 +110,7 @@
     - bt-joiner
     - gateway
     - demo
+    - cloudmqtt
 
 # hawkbit
 - hosts: all
