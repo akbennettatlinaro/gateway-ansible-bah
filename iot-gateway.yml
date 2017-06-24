@@ -1,21 +1,40 @@
-# Simple ansible playbook to start the appropriate containers on a iot-gateway
+# An ansible playbook to start the appropriate containers on a iot-gateway
 #
-# docker commands are used and not the ansible docker utilities to remove
-# additional dependencies to the image
+# note: docker commands are used and not the ansible docker utilities to remove
+# additional dependencies on the target system
 
 # Host dependencies:
 #  - install ansible,
 #  - create and copy ssh key
 #  - run playbook with appropriate parameters
-#  ansible-playbook -e "mqttuser= mqttpass= mqtthost= mqttport= gitci= tag=" -i targethost, iot-gateway.yml
+#    i.e. ansible-playbook -e "mqttuser= mqttpass= mqtthost= mqttport= gitci= tag=" -i targethost, iot-gateway.yml
 #    where tag is the default docker tag (e.g. latest-arm64, latest-armhf or "" for x86-64)
 
-# Cleanup running containers when doing a group rollout
+# There are Ansible tags below for the following gateway personalities
+#
+# gateway - start default containers for the gateway
+#  + minimal mosquitto broker (local mqtt port on 1883, websocket port on 9001)
+#  + tinyproxy (expects gitci.com IP as hawkbit will run on a different system)
+#  + bt-joiner
+#  + freeboard
+# cloud - start containers configured to bridge mqtt data to the cloud
+#  + mosquitto configured for use with cloud service (i.e. Bluemix or Cloudmqtt)
+#  + tinyproxy (expects gitci.com IP as hawkbit will run on a different system)
+#  + bt-joiner
+# local - configured to run all services directly on the gateway
+#  + minimal mosquitto broker (local mqtt port on 1883, websocket port on 9001)
+#  + hawkbit (running on gateway device
+#  + bt-joiner
+#  + freeboard
+# There are also ansible tags for the individual items;
+#   mosquitto, tinyproxy, bt-joiner, freeboard, etc...
+
+# This task cleans up any running containers when using a gateway personality
 - hosts: all
   tasks:
   - name: Cleanup for containers for group roll-out
     command: sh -c "docker stop $(docker ps -aq) ;"\
-                   "docker rm $(docker ps -aq); echo "PASS"
+                   "docker rm $(docker ps -aq); echo 'PASS'"
   tags:
     - gateway
     - cloud
@@ -56,6 +75,7 @@
                            "--name mosquitto {{ hub|default('linarotechnologies') }}/mosquitto:{{ tag|default('latest') }}"
   tags:
     - cloud
+    - mosquitto-cloud
 
 # Mosquitto 'minimal' broker
 - hosts: all
@@ -71,7 +91,7 @@
                            "-v /home/linaro/mosquitto.conf:/etc/mosquitto/conf.d/mosquitto.conf "\
                            "--name mosquitto {{ hub|default('linarotechnologies') }}/mosquitto:{{ tag|default('latest') }}"
   tags:
-    - mosquitto
+    - mosquitto-local
     - gateway
     - local
 
@@ -89,7 +109,6 @@
   tags:
     - tinyproxy
     - gateway
-    - local
     - cloud
 
 # Bt-Joiner
@@ -109,8 +128,8 @@
   tags:
     - bt-joiner
     - gateway
-    - demo
-    - cloudmqtt
+    - local
+    - cloud
 
 # hawkbit
 - hosts: all
@@ -123,40 +142,33 @@
                            "--name hawkbit {{ hub|default('linarotechnologies') }}/hawkbit-update-server:{{ tag|default('latest') }}"
   tags:
     - hawkbit
-    - demo
+    - local
 
 # Freeboard
 - hosts: all
   tasks:
-  - name: Copy freeboard config file
-    copy:
-      src: dashboard-private.json
-      dest: /home/linaro/dashboard-private.json
-  - name: fixup ipaddress of gateway for freeboard dashboard {{ brokerhost|default('ipaddress_of_broker') }}
-    replace:
-      dest=/home/linaro/dashboard-private.json
-      regexp='brokerhost'
-      replace='{{ brokerhost|default('192.168.0.1') }}'
-      backup=yes
-  - name: fixup broker user
-    replace:
-      dest=/home/linaro/dashboard-private.json
-      regexp='brokeruser'
-      replace='{{ brokeruser|default('') }}'
-      backup=yes
-  - name: fixup broker pw
-    replace:
-      dest=/home/linaro/dashboard-private.json
-      regexp='brokerpw'
-      replace='{{ brokerpw|default('') }}'
-      backup=yes
+  - name: create dashboard directory
+    file: path=/home/linaro/dashboards state=directory mode=0755
+
+  - name: Copy default freeboard dashboard
+    template:
+      src: dashboards/default.json
+      dest: /home/linaro/dashboards/default.json
+
+  - name: Copy simple freeboard dashboard
+    template:
+      src: dashboards/simple.json
+      dest: /home/linaro/dashboards/simple.json
+
   - name: Run freeboard container
     command: sh -c "docker stop freeboard; docker rm freeboard; "\
                    "docker pull {{ hub|default('linarotechnologies') }}/freeboard-demo:{{ tag|default('latest') }}; "\
                    "docker run --restart=always -d -t -p 80:80 "\
-                           "-v /home/linaro/dashboard-private.json:/usr/share/nginx/html/dashboard.json "\
+                           "-v /home/linaro/dashboards/default.json:/usr/share/nginx/html/default.json "\
+                           "-v /home/linaro/dashboards/default.json:/usr/share/nginx/html/dashboard.json "\
+                           "-v /home/linaro/dashboards:/usr/share/nginx/html/dashboards "\
                            "--name freeboard {{ hub|default('linarotechnologies') }}/freeboard-demo:{{ tag|default('latest') }}"
   tags:
     - freeboard
-    - demo
-
+    - gateway
+    - local

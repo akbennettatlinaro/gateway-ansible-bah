@@ -34,9 +34,11 @@ ansible-playbook -e "mqttuser= mqttpass= mqtthost= mqttport= gitci= tag=" -i tar
 
 Ansible tags:
 
- - --tags demo       # load hawkbit, freeboard, bt-joiner and mosquitto
- - --tags gateway    # load mosquitto, bt-joiner and tinyproxy
- - --tags mosquitto
+ - --tags local      # load hawkbit, freeboard, bt-joiner and mosquitto-local
+ - --tags gateway    # load mosquitto-local, bt-joiner, freeboard and tinyproxy
+ - --tags cloud      # load mosquitto-cloud, bt-joiner and tinyproxy
+ - --tags mosquitto-local
+ - --tags mosquitto-cloud
  - --tags hawkbit
  - --tags bt-joiner
  - --tags tinyproxy
@@ -67,3 +69,5 @@ The sample dashboard-private.json file is used to demonstrate how to set up a pe
 
 If you modify and use dashboard-private.json, you can browse to the persistent page by appending **?load=dashboard.json**
  - i.e. http://targethost/?load=dashboard.json
+ - i.e. http://targethost/?load=dashboards/default.json - a complex dashboard that requires modification
+ - i.e. http://targethost/?load=dashboards/simple.json - a simple 'catch all' dashboard
